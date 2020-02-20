@@ -9,42 +9,61 @@ function App() {
 	);
 
 	useEffect(() => {
+		const fetchDefaultQuery = async () => {
+			const fetchResponse = await fetch("/exampleQuery.sql");
+			const defaultQuery = await fetchResponse.text();
+			setQuery(defaultQuery);
+		};
+		if (!localStorage.getItem(localStorageKey)) {
+			fetchDefaultQuery();
+		}
+	}, []);
+
+	useEffect(() => {
 		localStorage.setItem(localStorageKey, query);
 	}, [query]);
 
-	const whereMatch = query.match(/\n\nwhere (.*?)\n\ngroup/ims);
-	const whereSection = whereMatch[1];
-	const whereSectionWithoutComments = whereSection.replace(/--(.*?)\n/gi, "");
+	let javaCode = "";
+	if (query) {
+		try {
+			const whereMatch = query.match(/\n\nwhere (.*?)\n\ngroup/ims);
+			const whereSection = whereMatch[1];
+			const whereSectionWithoutComments = whereSection.replace(
+				/--(.*?)\n/gi,
+				""
+			);
 
-	const variableRegex = /@(.*?)( |\n)/;
+			const variableRegex = /@(.*?)( |\n)/;
 
-	const variablesArray = whereSectionWithoutComments
-		.match(new RegExp(variableRegex, "g"))
-		.map(rawMatch => rawMatch.match(new RegExp(variableRegex))[1]);
-	const variables = new Set(variablesArray);
+			const variablesArray = whereSectionWithoutComments
+				.match(new RegExp(variableRegex, "g"))
+				.map(rawMatch => rawMatch.match(new RegExp(variableRegex))[1]);
+			const variables = new Set(variablesArray);
 
-	const whereSectionWithVariablesReplaced = whereSectionWithoutComments.replace(
-		new RegExp(variableRegex, "g"),
-		match => `:${match.substring(1)}`
-	);
+			const whereSectionWithVariablesReplaced = whereSectionWithoutComments.replace(
+				new RegExp(variableRegex, "g"),
+				match => `:${match.substring(1)}`
+			);
 
-	const whereConditions = whereSectionWithVariablesReplaced.split(/\n\nand /);
+			const whereConditions = whereSectionWithVariablesReplaced.split(
+				/\n\nand /
+			);
 
-	const javaCodeForVariables = Array.from(variables)
-		.map(variable => `query.setParameter("${variable}", );\n`)
-		.join("");
+			const javaCodeForVariables = Array.from(variables)
+				.map(variable => `query.setParameter("${variable}", );\n`)
+				.join("");
 
-	const javaCodeForWhereConditions = whereConditions
-		.map(
-			condition =>
-				`conditions.add("${condition
-					.split("\n")
-					.join(' \\n" + \n"')
-					.replace(/"(\t{1,})/g, match => `${match.substring(1)}"`)}");\n`
-		)
-		.join("");
+			const javaCodeForWhereConditions = whereConditions
+				.map(
+					condition =>
+						`conditions.add("${condition
+							.split("\n")
+							.join(' \\n" + \n"')
+							.replace(/"(\t{1,})/g, match => `${match.substring(1)}"`)}");\n`
+				)
+				.join("");
 
-	const javaCode = `
+			javaCode = `
 List<String> conditions = new ArrayList<>();
 
 ${javaCodeForWhereConditions}
@@ -53,6 +72,10 @@ String whereClause = "where " + conditions.stream().collect(Collectors.joining("
 
 ${javaCodeForVariables}
 	`;
+		} catch (e) {
+			console.error(e);
+		}
+	}
 
 	return (
 		<div className="App">
